@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"testing"
 
+	"github.com/aws/aws-sdk-go/service/directoryservice"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/acctest"
-
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 )
 
@@ -30,13 +30,13 @@ func TestAccDataSourceAwsDirectoryServiceDirectory_SimpleAD(t *testing.T) {
 	dataSourceName := "data.aws_directory_service_directory.test-simple-ad"
 
 	resource.ParallelTest(t, resource.TestCase{
-		PreCheck:  func() { testAccPreCheck(t) },
+		PreCheck:  func() { testAccPreCheck(t); testAccPreCheckAWSDirectoryServiceSimpleDirectory(t) },
 		Providers: testAccProviders,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccDataSourceAwsDirectoryServiceDirectoryConfig_SimpleAD(alias),
+				Config: testAccDataSourceAwsDirectoryServiceDirectoryConfig_SimpleAD(alias, directoryservice.DirectoryTypeSimpleAd),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(dataSourceName, "type", "SimpleAD"),
+					resource.TestCheckResourceAttr(dataSourceName, "type", directoryservice.DirectoryTypeSimpleAd),
 					resource.TestCheckResourceAttr(dataSourceName, "size", "Small"),
 					resource.TestCheckResourceAttr(dataSourceName, "name", "tf-testacc-corp.neverland.com"),
 					resource.TestCheckResourceAttr(dataSourceName, "description", "tf-testacc SimpleAD"),
@@ -65,9 +65,9 @@ func TestAccDataSourceAwsDirectoryServiceDirectory_MicrosoftAD(t *testing.T) {
 		Providers: testAccProviders,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccDataSourceAwsDirectoryServiceDirectoryConfig_MicrosoftAD(alias),
+				Config: testAccDataSourceAwsDirectoryServiceDirectoryConfig_MicrosoftAD(alias, directoryservice.DirectoryTypeMicrosoftAd),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr(dataSourceName, "type", "MicrosoftAD"),
+					resource.TestCheckResourceAttr(dataSourceName, "type", directoryservice.DirectoryTypeMicrosoftAd),
 					resource.TestCheckResourceAttr(dataSourceName, "edition", "Standard"),
 					resource.TestCheckResourceAttr(dataSourceName, "name", "tf-testacc-corp.neverland.com"),
 					resource.TestCheckResourceAttr(dataSourceName, "description", "tf-testacc MicrosoftAD"),
@@ -99,7 +99,7 @@ func TestAccDataSourceAWSDirectoryServiceDirectory_connector(t *testing.T) {
 		Providers: testAccProviders,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccDataSourceDirectoryServiceDirectoryConfig_connector,
+				Config: testAccDataSourceDirectoryServiceDirectoryConfig_connector(directoryservice.DirectoryTypeAdconnector),
 				Check: resource.ComposeTestCheckFunc(
 					resource.TestCheckResourceAttrPair(dataSourceName, "connect_settings.0.connect_ips", resourceName, "connect_settings.0.connect_ips"),
 				),
@@ -120,7 +120,7 @@ resource "aws_vpc" "main" {
   cidr_block = "10.0.0.0/16"
 
   tags = {
-    Name = "tf-testacc-%s"
+    Name = "tf-testacc-%[1]s"
   }
 }
 
@@ -130,7 +130,7 @@ resource "aws_subnet" "primary" {
   cidr_block        = "10.0.1.0/24"
 
   tags = {
-    Name = "tf-testacc-%s-primary"
+    Name = "tf-testacc-%[1]s-primary"
   }
 }
 
@@ -140,16 +140,16 @@ resource "aws_subnet" "secondary" {
   cidr_block        = "10.0.2.0/24"
 
   tags = {
-    Name = "tf-testacc-%s-secondary"
+    Name = "tf-testacc-%[1]s-secondary"
   }
 }
-`, adType, adType, adType)
+`, adType)
 }
 
-func testAccDataSourceAwsDirectoryServiceDirectoryConfig_SimpleAD(alias string) string {
+func testAccDataSourceAwsDirectoryServiceDirectoryConfig_SimpleAD(alias, dirType string) string {
 	return testAccDataSourceAwsDirectoryServiceDirectoryConfig_Prerequisites("simple-ad") + fmt.Sprintf(`
 resource "aws_directory_service_directory" "test-simple-ad" {
-  type        = "SimpleAD"
+  type        = %q
   size        = "Small"
   name        = "tf-testacc-corp.neverland.com"
   description = "tf-testacc SimpleAD"
@@ -168,13 +168,13 @@ resource "aws_directory_service_directory" "test-simple-ad" {
 data "aws_directory_service_directory" "test-simple-ad" {
   directory_id = aws_directory_service_directory.test-simple-ad.id
 }
-`, alias)
+`, dirType, alias)
 }
 
-func testAccDataSourceAwsDirectoryServiceDirectoryConfig_MicrosoftAD(alias string) string {
+func testAccDataSourceAwsDirectoryServiceDirectoryConfig_MicrosoftAD(alias, dirType string) string {
 	return testAccDataSourceAwsDirectoryServiceDirectoryConfig_Prerequisites("microsoft-ad") + fmt.Sprintf(`
 resource "aws_directory_service_directory" "test-microsoft-ad" {
-  type        = "MicrosoftAD"
+  type        = %q
   edition     = "Standard"
   name        = "tf-testacc-corp.neverland.com"
   description = "tf-testacc MicrosoftAD"
@@ -193,10 +193,11 @@ resource "aws_directory_service_directory" "test-microsoft-ad" {
 data "aws_directory_service_directory" "test-microsoft-ad" {
   directory_id = aws_directory_service_directory.test-microsoft-ad.id
 }
-`, alias)
+`, dirType, alias)
 }
 
-var testAccDataSourceDirectoryServiceDirectoryConfig_connector = testAccAvailableAZsNoOptInConfig() + `
+func testAccDataSourceDirectoryServiceDirectoryConfig_connector(dirType string) string {
+	return composeConfig(testAccAvailableAZsNoOptInConfig(), fmt.Sprintf(`
 resource "aws_directory_service_directory" "test" {
   name     = "corp.notexample.com"
   password = "SuperSecretPassw0rd"
@@ -212,7 +213,7 @@ resource "aws_directory_service_directory" "connector" {
   name     = "corp.notexample.com"
   password = "SuperSecretPassw0rd"
   size     = "Small"
-  type     = "ADConnector"
+  type     = %q
 
   connect_settings {
     customer_dns_ips  = aws_directory_service_directory.test.dns_ip_addresses
@@ -253,4 +254,5 @@ resource "aws_subnet" "test" {
 data "aws_directory_service_directory" "test-ad-connector" {
   directory_id = aws_directory_service_directory.connector.id
 }
-`
+`, dirType))
+}
