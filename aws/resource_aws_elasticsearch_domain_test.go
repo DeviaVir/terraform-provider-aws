@@ -1725,16 +1725,9 @@ func testAccESDomainConfig_vpc_update(randInt int, update bool) string {
 		subnet_string = "first"
 	}
 
-	return fmt.Sprintf(`
-data "aws_availability_zones" "available" {
-  state = "available"
-
-  filter {
-    name   = "opt-in-status"
-    values = ["opt-in-not-required"]
-  }
-}
-
+	return composeConfig(
+		testAccAvailableAZsNoOptInConfig(),
+		fmt.Sprintf(`
 resource "aws_vpc" "elasticsearch_in_vpc" {
   cidr_block = "192.168.0.0/22"
 
@@ -1792,7 +1785,7 @@ resource "aws_security_group" "second" {
 }
 
 resource "aws_elasticsearch_domain" "test" {
-  domain_name = "tf-test-%d"
+  domain_name = "tf-test-%[1]d"
 
   ebs_options {
     ebs_enabled = true
@@ -1806,11 +1799,11 @@ resource "aws_elasticsearch_domain" "test" {
   }
 
   vpc_options {
-    security_group_ids = ["%s"]
-    subnet_ids         = [aws_subnet.az1_ % s.id, aws_subnet.az2_ % s.id]
+    security_group_ids = ["%[2]s"]
+    subnet_ids         = [aws_subnet.az1_%[3]s.id, aws_subnet.az2_%[3]s.id]
   }
 }
-`, randInt, sg_ids, subnet_string, subnet_string)
+`, randInt, sg_ids, subnet_string))
 }
 
 func testAccESDomainConfig_internetToVpcEndpoint(randInt int) string {
