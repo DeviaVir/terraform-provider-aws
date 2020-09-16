@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/iam"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
@@ -92,6 +93,14 @@ func resourceAwsIamUserCreate(d *schema.ResourceData, meta interface{}) error {
 	log.Println("[DEBUG] Create IAM User request:", request)
 	createResp, err := iamconn.CreateUser(request)
 	if err != nil {
+		// Catch the `EntityAlreadyExists` return code, and continue with reading the
+		// user instead of erroring out.
+		if awsErr, ok := err.(awserr.Error); ok {
+			if awsErr.Code() == iam.ErrCodeEntityAlreadyExistsException {
+				d.SetId(name)
+				return resourceAwsIamUserRead(d, meta)
+			}
+		}
 		return fmt.Errorf("Error creating IAM User %s: %s", name, err)
 	}
 
